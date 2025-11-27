@@ -1,0 +1,8 @@
+{
+  "name": "TravelMemories AI",
+  "description": "A visual travel diary to map your journeys, view photo memories, and enhance descriptions with AI.",
+  "requestFramePermissions": [
+    "camera",
+    "geolocation"
+  ]
+}
