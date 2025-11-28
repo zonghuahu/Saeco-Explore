@@ -4,33 +4,60 @@ import { MemoryModal } from './components/MemoryModal';
 import { AddMemoryModal } from './components/AddMemoryModal';
 import { ManageMemoriesModal } from './components/ManageMemoriesModal';
 import { Memory, Coordinate } from './types';
-import { ArrowRight, Map as MapIcon, Globe, Heart, Sparkles, Camera, List, Loader2 } from 'lucide-react';
+import { ArrowRight, Map as MapIcon, Globe, Heart, Sparkles, Camera, List, Loader2, Instagram } from 'lucide-react';
 
 // Firebase Imports
 import { collection, onSnapshot, addDoc, updateDoc, doc, deleteDoc, query, orderBy, setDoc } from 'firebase/firestore';
 import { db, uploadImage } from './services/firebase';
 
-const DEFAULT_HERO_IMAGE = "https://images.unsplash.com/photo-1516483638261-f4dbaf036963?q=80&w=1000&auto=format&fit=crop"; 
+// ▼▼▼▼▼▼▼▼▼▼▼▼▼▼▼▼▼▼▼▼▼▼▼▼▼▼▼▼▼▼▼▼▼▼▼▼▼▼▼▼▼▼▼▼▼▼▼▼▼▼
+// 步骤：
+// 1. 在您的网站上上传照片
+// 2. 右键点击照片 -> "复制图片地址"
+// 3. 将地址粘贴到下方双引号中，替换原本的链接
+// ▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲
+
+const DEFAULT_HERO_IMAGE = "https://i.postimg.cc/XJG1qMLB/tang-tang.jpg"; 
+
+// Custom Icons for Social Media
+// Updated XhsIcon (Xiaohongshu) - A literal "Book" shape with a bookmark
+const XhsIcon = ({ className }: { className?: string }) => (
+  <svg viewBox="0 0 24 24" fill="currentColor" className={className} xmlns="http://www.w3.org/2000/svg">
+    {/* Book Cover */}
+    <path d="M19 3H5C3.89543 3 3 3.89543 3 5V19C3 20.1046 3.89543 21 5 21H19C20.1046 21 21 20.1046 21 19V5C21 3.89543 20.1046 3 19 3Z" />
+    {/* Bookmark */}
+    <path d="M7 3V11L9.5 9.5L12 11V3H7Z" fill="white" fillOpacity="0.5" />
+  </svg>
+);
 
 const LandingPage = ({ onStart }: { onStart: () => void }) => {
-  const [heroImage, setHeroImage] = useState(DEFAULT_HERO_IMAGE);
+  const [heroImage, setHeroImage] = useState<string | null>(null);
   const [isUploadingHero, setIsUploadingHero] = useState(false);
+  const [isImgLoaded, setIsImgLoaded] = useState(false);
 
+  // ▼▼▼ 请在此处修改您的文字内容 ▼▼▼
   const TEXT_CONFIG = {
     badge: "Love you 3000 times", 
     titleLine1: "世界辣么大", 
     titleLine2: "我想去看看", 
     description: "世界很大，而我们的故事不断延伸。从北风吹过的奥斯陆街角到马赛海边落日的余温，每一个被记录的瞬间，都让地图变得更像家", 
     buttonText: "打开地图", 
-    photoLabel: "For Saeco" 
+    photoLabel: "For Saeko",
+    
+    // ▼▼▼ 社交账号配置 ▼▼▼
+    socials: {
+      // 填入完整的 URL
+      xiaohongshu: "https://www.xiaohongshu.com/user/profile/5be5a3377f58480001f30720?xsec_token=ABp0lnP5nsZKIfHQeHF4mx4iRdNxQAMyh-Nuxxf89XekA%3D&xsec_source=pc_search",
+      instagram: "https://instagram.com/kawaiisaeko3o3"
+    }
   };
 
-  // REAL-TIME LISTENER for Landing Page Settings (Hero Image)
   useEffect(() => {
-    // Listen to the 'settings' collection, document 'landing_page'
     const unsub = onSnapshot(doc(db, 'settings', 'landing_page'), (doc) => {
       if (doc.exists() && doc.data().heroImageUrl) {
         setHeroImage(doc.data().heroImageUrl);
+      } else {
+        setHeroImage(DEFAULT_HERO_IMAGE);
       }
     });
     return () => unsub();
@@ -40,20 +67,14 @@ const LandingPage = ({ onStart }: { onStart: () => void }) => {
     if (e.target.files && e.target.files[0]) {
       const file = e.target.files[0];
       setIsUploadingHero(true);
+      setIsImgLoaded(false); 
 
       try {
-        // 1. Upload image to Firebase Storage
         const downloadUrl = await uploadImage(file);
-
-        // 2. Save the URL to Firestore Global Settings
-        // using setDoc with merge: true creates the document if it doesn't exist
         await setDoc(doc(db, 'settings', 'landing_page'), { 
           heroImageUrl: downloadUrl,
           updatedAt: Date.now()
         }, { merge: true });
-
-        // Note: We don't need to manually setHeroImage here because the 
-        // onSnapshot listener above will trigger automatically!
       } catch (error) {
         console.error("Failed to upload hero image:", error);
         alert("Failed to update cover photo. Please try again.");
@@ -82,15 +103,26 @@ const LandingPage = ({ onStart }: { onStart: () => void }) => {
         
         {/* Left Side: Photo Frame */}
         <div className="order-2 md:order-1 relative animate-float">
-            <div className="polaroid w-72 md:w-80 rotate-[-6deg] hover:rotate-0 transition-all duration-500 relative group cursor-pointer">
-                <div className="aspect-[3/4] overflow-hidden bg-gray-100 mb-4 rounded-sm border border-gray-100 relative">
-                    <img 
-                        src={heroImage} 
-                        alt="Hero" 
-                        className={`w-full h-full object-cover transform group-hover:scale-105 transition-transform duration-700 ${isUploadingHero ? 'opacity-50 blur-sm' : ''}`} 
-                    />
+            <div className="polaroid w-72 md:w-80 rotate-[-6deg] hover:rotate-0 transition-all duration-500 relative group cursor-pointer bg-white">
+                <div className="aspect-[3/4] overflow-hidden bg-gray-50 mb-4 rounded-sm border border-gray-100 relative flex items-center justify-center">
                     
-                    {/* Loading Indicator */}
+                    <div className={`absolute inset-0 bg-pink-50/50 transition-opacity duration-1000 ${isImgLoaded ? 'opacity-0' : 'opacity-100'}`} />
+
+                    {heroImage ? (
+                        <img 
+                            src={heroImage} 
+                            alt="Hero" 
+                            onLoad={() => setIsImgLoaded(true)}
+                            className={`w-full h-full object-cover transform group-hover:scale-105 transition-all duration-[2000ms] ease-out ${
+                                isImgLoaded ? 'opacity-100 blur-0 grayscale-0' : 'opacity-0 blur-md grayscale'
+                            } ${isUploadingHero ? 'opacity-50 blur-sm' : ''}`} 
+                        />
+                    ) : (
+                         <div className="absolute inset-0 flex items-center justify-center">
+                            <Loader2 className="animate-spin text-pink-300" size={32} />
+                        </div>
+                    )}
+                    
                     {isUploadingHero && (
                         <div className="absolute inset-0 flex items-center justify-center z-30">
                             <Loader2 className="animate-spin text-pink-500 w-10 h-10" />
@@ -134,13 +166,40 @@ const LandingPage = ({ onStart }: { onStart: () => void }) => {
                 <span className="text-transparent bg-clip-text bg-gradient-to-r from-pink-400 to-indigo-500 italic pr-2">{TEXT_CONFIG.titleLine2}</span>
             </h1>
             
-            <p className="max-w-md text-slate-500 text-lg mb-10 leading-relaxed font-light">
+            <p className="max-w-md text-slate-500 text-lg mb-8 leading-relaxed font-light">
                 {TEXT_CONFIG.description}
             </p>
 
+            {/* Social Media Pills - Hyperlinks */}
+            <div className="flex flex-wrap gap-3 justify-center md:justify-start mb-10">
+                {TEXT_CONFIG.socials.xiaohongshu && (
+                  <a 
+                    href={TEXT_CONFIG.socials.xiaohongshu}
+                    target="_blank" 
+                    rel="noopener noreferrer"
+                    className="flex items-center gap-2 px-4 py-2 bg-white/40 hover:bg-white/80 rounded-full text-sm font-medium text-slate-600 border border-white/50 shadow-sm transition-all hover:-translate-y-1 hover:shadow-md cursor-pointer hover:text-red-500"
+                  >
+                    <XhsIcon className="w-4 h-4 text-red-500" />
+                    <span>小红书</span>
+                  </a>
+                )}
+                {/* WeChat Removed */}
+                {TEXT_CONFIG.socials.instagram && (
+                  <a 
+                    href={TEXT_CONFIG.socials.instagram} 
+                    target="_blank" 
+                    rel="noopener noreferrer" 
+                    className="flex items-center gap-2 px-4 py-2 bg-white/40 hover:bg-white/80 rounded-full text-sm font-medium text-slate-600 border border-white/50 shadow-sm transition-all hover:-translate-y-1 hover:shadow-md cursor-pointer hover:text-pink-600"
+                  >
+                    <Instagram size={16} className="text-pink-600" />
+                    <span>Instagram</span>
+                  </a>
+                )}
+            </div>
+
             <button 
                 onClick={onStart}
-                className="group relative px-8 py-4 bg-white/80 hover:bg-white text-slate-800 rounded-full font-medium transition-all shadow-[0_4px_20px_rgba(236,72,153,0.15)] hover:shadow-[0_8px_30px_rgba(236,72,153,0.25)] flex items-center gap-3 overflow-hidden border border-pink-100"
+                className="group relative px-8 py-4 bg-white/80 hover:bg-white text-slate-800 rounded-full font-medium transition-all shadow-[0_4px_20px_rgba(236,72,153,0.15)] hover:shadow-[0_8px_30px_rgba(236,72,153,0.25)] flex items-center gap-3 overflow-hidden border border-pink-100 mx-auto md:mx-0"
             >
                 <span className="relative z-10">{TEXT_CONFIG.buttonText}</span>
                 <ArrowRight className="w-5 h-5 text-pink-400 group-hover:translate-x-1 transition-transform relative z-10" />
@@ -195,7 +254,6 @@ const App: React.FC = () => {
         
         setIsAdding(false);
         setPendingCoordinate(null);
-        // No need to setMemories manually, the onSnapshot listener will handle it!
     } catch (e) {
         console.error("Error adding document: ", e);
         alert("Failed to save to cloud. Please try again.");
@@ -258,7 +316,7 @@ const App: React.FC = () => {
                     <Heart size={18} fill="currentColor" />
                 </div>
                 <div className="text-left">
-                    <h1 className="text-base font-bold tracking-tight text-slate-700 font-serif italic">Saeco's World</h1>
+                    <h1 className="text-base font-bold tracking-tight text-slate-700 font-serif italic">Saeko's World</h1>
                 </div>
             </button>
 

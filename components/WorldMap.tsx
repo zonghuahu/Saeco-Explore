@@ -15,14 +15,52 @@ interface WorldMapProps {
   onMapClick: (coord: Coordinate) => void;
 }
 
+// Helper: Ray Casting algorithm to check if a point is inside a polygon
+const isPointInPolygon = (point: [number, number], vs: [number, number][]) => {
+    // point = [lng, lat], vs = [[lng, lat], ...]
+    const x = point[0], y = point[1];
+    let inside = false;
+    for (let i = 0, j = vs.length - 1; i < vs.length; j = i++) {
+        const xi = vs[i][0], yi = vs[i][1];
+        const xj = vs[j][0], yj = vs[j][1];
+        const intersect = ((yi > y) !== (yj > y))
+            && (x < (xj - xi) * (y - yi) / (yj - yi) + xi);
+        if (intersect) inside = !inside;
+    }
+    return inside;
+};
+
+// Helper: Check if coordinate is inside a GeoJSON geometry (Polygon or MultiPolygon)
+const isPointInGeometry = (lng: number, lat: number, geometry: any) => {
+    if (geometry.type === 'Polygon') {
+        return isPointInPolygon([lng, lat], geometry.coordinates[0]);
+    } else if (geometry.type === 'MultiPolygon') {
+        for (const polygon of geometry.coordinates) {
+            if (isPointInPolygon([lng, lat], polygon[0])) return true;
+        }
+    }
+    return false;
+};
+
 export const WorldMap: React.FC<WorldMapProps> = ({ memories, onMemoryClick, onMapClick }) => {
   const mapContainerRef = useRef<HTMLDivElement>(null);
   const mapInstanceRef = useRef<any>(null);
   const markersRef = useRef<any[]>([]);
+  const geoJsonLayerRef = useRef<any>(null);
 
   // Tooltip State
   const [hoveredMemory, setHoveredMemory] = useState<Memory | null>(null);
   const [tooltipPos, setTooltipPos] = useState({ x: 0, y: 0 });
+  const [worldGeoJson, setWorldGeoJson] = useState<any>(null);
+
+  // Fetch World GeoJSON on mount
+  useEffect(() => {
+    // Switch to Natural Earth 110m Data (High Precision, smoother edges)
+    fetch('https://d2ad6b4ur7yvpq.cloudfront.net/naturalearth-3.3.0/ne_110m_admin_0_countries.geojson')
+        .then(res => res.json())
+        .then(data => setWorldGeoJson(data))
+        .catch(err => console.error("Failed to load world map data", err));
+  }, []);
 
   // Initialize Map
   useEffect(() => {
@@ -42,10 +80,17 @@ export const WorldMap: React.FC<WorldMapProps> = ({ memories, onMemoryClick, onM
     });
 
     // Add CartoDB Voyager Tiles (Beautiful, clean, detailed)
-    window.L.tileLayer('https://{s}.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}{r}.png', {
+    window.L.tileLayer('https://{s}.basemaps.cartocdn.com/rastertiles/voyager_nolabels/{z}/{x}/{y}{r}.png', {
       attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors &copy; <a href="https://carto.com/attributions">CARTO</a>',
       subdomains: 'abcd',
       maxZoom: 20
+    }).addTo(map);
+    
+    // Add Labels on top (so the pink highlight doesn't cover city names)
+    window.L.tileLayer('https://{s}.basemaps.cartocdn.com/rastertiles/voyager_only_labels/{z}/{x}/{y}{r}.png', {
+        subdomains: 'abcd',
+        maxZoom: 20,
+        pane: 'shadowPane' // Hack to put labels somewhat high, though z-index works better
     }).addTo(map);
 
     // Zoom control top-right
@@ -67,6 +112,56 @@ export const WorldMap: React.FC<WorldMapProps> = ({ memories, onMemoryClick, onM
       }
     };
   }, []); // Run once on mount
+
+  // Update Highlighted Countries Layer
+  useEffect(() => {
+      if (!mapInstanceRef.current || !worldGeoJson || !window.L) return;
+      
+      // Identify visited countries IDs
+      const visitedCountryIds = new Set<string>();
+      
+      if (memories.length > 0 && worldGeoJson.features) {
+          worldGeoJson.features.forEach((feature: any) => {
+              // Check if any memory is inside this country
+              const isVisited = memories.some(mem => 
+                  isPointInGeometry(mem.coordinates.lng, mem.coordinates.lat, feature.geometry)
+              );
+              if (isVisited) {
+                  // Use reliable ID if available, otherwise try properties
+                  const countryId = feature.id || feature.properties?.iso_a3 || feature.properties?.name;
+                  if (countryId) visitedCountryIds.add(countryId);
+                  
+                  // Temporary hack: store visited status on the feature itself for easier styling fn access
+                  feature.properties._isVisited = true;
+              } else {
+                  feature.properties._isVisited = false;
+              }
+          });
+      }
+
+      // Remove existing layer
+      if (geoJsonLayerRef.current) {
+          geoJsonLayerRef.current.remove();
+      }
+
+      // Add new layer with watercolor styling
+      geoJsonLayerRef.current = window.L.geoJSON(worldGeoJson, {
+          style: (feature: any) => {
+              const isVisited = feature.properties._isVisited;
+              return {
+                  fillColor: isVisited ? '#ec4899' : 'transparent', // Pink 500 for visited
+                  fillOpacity: isVisited ? 0.2 : 0, 
+                  color: 'transparent', // No border stroke!
+                  weight: 0, // Remove stroke completely for soft edges
+                  className: isVisited ? 'visited-country-layer' : '' // Apply watercolor blur
+              };
+          }
+      }).addTo(mapInstanceRef.current);
+      
+      // Ensure country highlights are BEHIND markers
+      geoJsonLayerRef.current.bringToBack();
+
+  }, [worldGeoJson, memories]);
 
   // Update Markers
   useEffect(() => {
@@ -93,7 +188,8 @@ export const WorldMap: React.FC<WorldMapProps> = ({ memories, onMemoryClick, onM
       });
 
       const marker = window.L.marker([memory.coordinates.lat, memory.coordinates.lng], {
-        icon: customIcon
+        icon: customIcon,
+        zIndexOffset: 1000 // Ensure markers are always on top of country highlights
       }).addTo(map);
 
       // Click Handler
